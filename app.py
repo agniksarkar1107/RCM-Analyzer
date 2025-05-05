@@ -1,3 +1,11 @@
+# Fix SQLite version issue by using pysqlite3
+import sys
+try:
+    import pysqlite3
+    sys.modules['sqlite3'] = pysqlite3
+except ImportError:
+    pass
+
 import streamlit as st
 import os
 from dotenv import load_dotenv

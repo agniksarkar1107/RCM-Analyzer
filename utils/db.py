@@ -4,6 +4,14 @@ import uuid
 import json
 from typing import Dict, List, Any, Union
 import logging
+import sys
+
+# Fix SQLite version issue by using pysqlite3
+try:
+    import pysqlite3
+    sys.modules['sqlite3'] = pysqlite3
+except ImportError:
+    pass
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
