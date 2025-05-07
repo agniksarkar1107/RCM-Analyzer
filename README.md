@@ -51,6 +51,23 @@ streamlit run app.py
 5. Explore risks by department using the tabbed interface
 6. Use the **Clear Analysis** button to reset and start with a new document
 
+## Streamlit Cloud Deployment
+
+This application is designed to be compatible with Streamlit Cloud deployment. To deploy on Streamlit Cloud:
+
+1. Fork this repository to your GitHub account
+2. On Streamlit Cloud, create a new app and connect it to your fork
+3. Set the required environment variables (GEMINI_API_KEY)
+4. Deploy the application
+
+### SQLite Version Compatibility
+
+ChromaDB requires SQLite version 3.35.0 or higher. The application will automatically handle environments with older SQLite versions:
+
+- If the SQLite version is compatible, the app will use persistent ChromaDB storage
+- If the SQLite version is too old (like on some Streamlit Cloud instances), the app will use in-memory ChromaDB storage
+- This ensures the application works correctly regardless of the SQLite version available
+
 ## Example Data
 
 An example RCM file is included in the `examples` directory for testing purposes.

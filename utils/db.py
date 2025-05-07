@@ -7,6 +7,8 @@ import logging
 import sys
 # Use built-in sqlite3 only
 import sqlite3
+import importlib.util
+import platform
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,38 +29,42 @@ def initialize_chroma(collection_name: str):
         persist_directory = os.path.join(os.getcwd(), "chroma_db")
         os.makedirs(persist_directory, exist_ok=True)
         
-        client = chromadb.PersistentClient(path=persist_directory)
+        # Check SQLite version and use in-memory if needed
+        sqlite_version = sqlite3.sqlite_version_info
+        min_version_required = (3, 35, 0)
         
-        # Use sentence-transformers for embedding
+        if sqlite_version < min_version_required:
+            logger.warning(f"SQLite version {sqlite_version} is below required version {min_version_required}. Using in-memory database instead.")
+            # Use in-memory database as fallback
+            client = chromadb.Client()
+            logger.info("Using in-memory ChromaDB client due to SQLite version constraints")
+        else:
+            # Use persistent storage if SQLite version is sufficient
+            client = chromadb.PersistentClient(path=persist_directory)
+            logger.info(f"Using persistent ChromaDB client at {persist_directory}")
+        
+        # Get or create collection
         try:
-            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-            embedding_func = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-            logger.info(f"Using SentenceTransformer embeddings with model: all-MiniLM-L6-v2")
-            
-            # Get or create collection with the specified embedding function
-            try:
-                collection = client.get_collection(name=collection_name, embedding_function=embedding_func)
-                logger.info(f"Loaded existing ChromaDB collection: {collection_name}")
-            except:
-                collection = client.create_collection(name=collection_name, embedding_function=embedding_func)
-                logger.info(f"Created new ChromaDB collection: {collection_name}")
-                
+            # Try with sentence-transformers embedding function
+            if importlib.util.find_spec("sentence_transformers"):
+                from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+                embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+                collection = client.get_or_create_collection(name=collection_name, embedding_function=embedding_function)
+                logger.info(f"Created/loaded collection {collection_name} with sentence-transformers")
+            else:
+                # Fall back to creating collection without embedding function
+                collection = client.get_or_create_collection(name=collection_name)
+                logger.info(f"Created/loaded collection {collection_name} without embedding function")
         except Exception as embedding_error:
-            logger.warning(f"Could not use SentenceTransformer: {str(embedding_error)}. Using no embeddings.")
-            
-            # Fallback to creating a collection without embeddings
-            try:
-                collection = client.get_collection(name=collection_name)
-                logger.info(f"Loaded existing ChromaDB collection without embeddings: {collection_name}")
-            except:
-                collection = client.create_collection(name=collection_name)
-                logger.info(f"Created new ChromaDB collection without embeddings: {collection_name}")
+            logger.warning(f"Failed to create collection with embedding function: {str(embedding_error)}")
+            # Final fallback - no embedding function
+            collection = client.get_or_create_collection(name=collection_name)
+            logger.info(f"Created/loaded collection {collection_name} without embedding function")
         
         return collection
-    
     except Exception as e:
-        logger.error(f"Error initializing ChromaDB: {str(e)}")
-        raise
+        logger.error(f"Failed to initialize ChromaDB: {str(e)}")
+        raise e
 
 def store_in_chroma(collection, data: Dict[str, Any]):
     """

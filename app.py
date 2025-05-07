@@ -17,6 +17,11 @@ from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+# Check SQLite version and warn if incompatible with ChromaDB
+sqlite_version = sqlite3.sqlite_version_info
+min_sqlite_version = (3, 35, 0)
+is_sqlite_compatible = sqlite_version >= min_sqlite_version
+
 # Load environment variables
 load_dotenv()
 
@@ -98,6 +103,10 @@ def main():
     st.markdown("<h1 class='main-header'>Risk Control Matrix Analyzer</h1>", unsafe_allow_html=True)
     st.markdown("<p class='sub-header'>Upload your RCM document for AI risk analysis</p>", unsafe_allow_html=True)
     
+    # Display SQLite compatibility warning if needed
+    if not is_sqlite_compatible:
+        st.warning(f"Warning: Your system has SQLite version {'.'.join(map(str, sqlite_version))}, which is below the recommended version {'.'.join(map(str, min_sqlite_version))} for ChromaDB persistence. Vector storage will use in-memory mode.")
+    
     # Create a simple upload interface
     uploaded_file = st.file_uploader("Upload Risk Control Matrix document", 
                                    type=["xlsx", "csv", "pdf", "docx"], 
@@ -133,10 +142,15 @@ def main():
                 
                 # Try to store in ChromaDB, but continue if it fails
                 try:
-                    db = initialize_chroma("risk_control_matrix")
-                    store_in_chroma(db, processed_data)
+                    if is_sqlite_compatible:
+                        db = initialize_chroma("risk_control_matrix")
+                        store_in_chroma(db, processed_data)
+                    else:
+                        # Skip ChromaDB storage if SQLite is incompatible but don't show error
+                        pass
                 except Exception as chroma_error:
-                    st.warning(f"ChromaDB storage failed, but analysis will continue: {str(chroma_error)}")
+                    # Log the error but don't display to user unless debugging
+                    print(f"ChromaDB storage failed: {str(chroma_error)}")
                 
                 # Analyze with Gemini
                 st.session_state.analyzed_data = analyze_risk_with_gemini(
@@ -149,7 +163,7 @@ def main():
                     os.remove(temp_file_path)
                 except PermissionError:
                     # Log the error but continue execution
-                    st.warning(f"Could not remove temporary file - it will be cleaned up later.")
+                    print(f"Could not remove temporary file - it will be cleaned up later.")
                 
                 st.success("Analysis complete!")
                 time.sleep(1)
@@ -157,13 +171,13 @@ def main():
                 
             except Exception as e:
                 st.error(f"Error analyzing document: {str(e)}")
-                st.exception(e)
                 # Try to remove temp file, but don't fail if it can't be removed
                 try:
                     if os.path.exists(temp_file_path):
                         os.remove(temp_file_path)
                 except PermissionError:
-                    st.warning(f"Could not remove temporary file - it will be cleaned up later.")
+                    # Log the error but continue execution
+                    pass
     
     # Display analyzed data if available
     if st.session_state.analyzed_data:
