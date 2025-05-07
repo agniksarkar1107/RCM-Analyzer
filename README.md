@@ -1,57 +1,59 @@
 # Risk Control Matrix Analyzer
 
-An interactive Streamlit dashboard for analyzing Risk Control Matrix (RCM) documents, extracting key insights, and providing actionable recommendations.
+An AI-powered tool that analyzes Risk Control Matrix (RCM) documents to identify control objectives, risks, and provide detailed risk analysis across departments.
 
 ## Features
 
-- Upload different document types (PDF, XLSX, CSV, DOCX)
-- Automatic extraction of structured data from RCM documents 
-- Risk analysis using Google's Gemini AI
-- Interactive visualization of risk metrics
-- Detailed gap analysis with recommendations
-- Vector database powered by ChromaDB for data persistence and search
-- Multi-department risk heatmap visualization
-
-## Screenshot
-
-![RCM Analyzer Dashboard](https://img.icons8.com/color/96/000000/risk-management.png)
+- **Document Analysis**: Upload and analyze Risk Control Matrices in Excel, CSV, PDF, or DOCX formats
+- **AI-Powered Risk Analysis**: Utilizes Google's Gemini AI model to assess risks and controls
+- **Interactive Dashboard**: Visual representation of departmental risks and control gaps
+- **Downloadable Reports**: Export analysis results as Excel or CSV for offline use
+- **Risk Visualization**: Color-coded risk classification (High, Medium, Low) across departments
+- **Control Gap Identification**: Highlights control gaps and provides recommendations
 
 ## Setup
 
 ### Prerequisites
-
-- Python 3.9+
-- Gemini API key
+- Python 3.10+
+- Required Python packages (see requirements.txt)
 
 ### Installation
 
-1. Clone the repository:
+1. Clone the repository
 ```bash
-git clone <repository-url>
-cd rcm-analyzer
+git clone https://github.com/Arittra-Bag/RCM-Analyzer.git
+cd RCM-Analyzer
 ```
 
-2. Install dependencies:
+2. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set up your Gemini API key:
-   - Create a `.env` file in the project root
-   - Add your Gemini API key: `GEMINI_API_KEY=your-api-key-here`
+3. Set up environment variables
+Create a `.env` file in the root directory with your Gemini API key:
+```
+GEMINI_API_KEY=your_api_key_here
+```
 
-## Usage
+### Running the Application
 
-1. Run the Streamlit application:
 ```bash
 streamlit run app.py
 ```
 
-2. Open your browser and navigate to http://localhost:8501
+## Usage
 
-3. Upload a Risk Control Matrix document (XLSX, CSV, PDF, or DOCX format)
+1. **Upload a Risk Control Matrix document** (Excel, CSV, PDF, or DOCX)
+2. Click **Analyze Document** to process the file
+3. View the analysis results in the interactive dashboard
+4. Download the complete analysis as Excel or CSV using the download buttons
+5. Explore risks by department using the tabbed interface
+6. Use the **Clear Analysis** button to reset and start with a new document
 
-4. View the analysis and interactive dashboard
+## Example Data
+
+An example RCM file is included in the `examples` directory for testing purposes.
 
 ## Project Structure
 
@@ -91,6 +93,10 @@ streamlit run app.py
 ## License
 
 MIT License
+
+## Author
+
+Created by Arittra Bag and Agnik Sarkar
 
 ## Acknowledgements
 

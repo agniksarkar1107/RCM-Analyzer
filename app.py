@@ -1,11 +1,5 @@
-# Fix SQLite version issue by using pysqlite3
 import sys
-try:
-    import pysqlite3
-    sys.modules['sqlite3'] = pysqlite3
-except ImportError:
-    pass
-
+import sqlite3
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -17,6 +11,11 @@ from utils.document_processor import process_document
 from utils.gemini import initialize_gemini, analyze_risk_with_gemini
 from utils.db import initialize_chroma, store_in_chroma, query_chroma
 import time
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 # Load environment variables
 load_dotenv()
@@ -132,9 +131,12 @@ def main():
             try:
                 processed_data = process_document(temp_file_path)
                 
-                # Store in ChromaDB
-                db = initialize_chroma("risk_control_matrix")
-                store_in_chroma(db, processed_data)
+                # Try to store in ChromaDB, but continue if it fails
+                try:
+                    db = initialize_chroma("risk_control_matrix")
+                    store_in_chroma(db, processed_data)
+                except Exception as chroma_error:
+                    st.warning(f"ChromaDB storage failed, but analysis will continue: {str(chroma_error)}")
                 
                 # Analyze with Gemini
                 st.session_state.analyzed_data = analyze_risk_with_gemini(
@@ -142,8 +144,12 @@ def main():
                     processed_data
                 )
                 
-                # Remove temp file
-                os.remove(temp_file_path)
+                # Try to remove temp file, but don't fail if it can't be removed
+                try:
+                    os.remove(temp_file_path)
+                except PermissionError:
+                    # Log the error but continue execution
+                    st.warning(f"Could not remove temporary file - it will be cleaned up later.")
                 
                 st.success("Analysis complete!")
                 time.sleep(1)
@@ -152,12 +158,234 @@ def main():
             except Exception as e:
                 st.error(f"Error analyzing document: {str(e)}")
                 st.exception(e)
-                if os.path.exists(temp_file_path):
-                    os.remove(temp_file_path)
+                # Try to remove temp file, but don't fail if it can't be removed
+                try:
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                except PermissionError:
+                    st.warning(f"Could not remove temporary file - it will be cleaned up later.")
     
     # Display analyzed data if available
     if st.session_state.analyzed_data:
         display_simplified_analysis(st.session_state.analyzed_data)
+
+def create_downloadable_excel(data):
+    """
+    Create an Excel file with all analyzed data and formatting
+    
+    Args:
+        data: The analyzed data from Gemini
+        
+    Returns:
+        Excel file as bytes
+    """
+    # Create workbook
+    wb = Workbook()
+    
+    # Define styles
+    title_font = Font(name='Arial', size=14, bold=True, color="0000FF")
+    header_font = Font(name='Arial', size=12, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    risk_high_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+    risk_medium_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    risk_low_fill = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
+    
+    border = Border(
+        left=Side(style='thin'), 
+        right=Side(style='thin'), 
+        top=Side(style='thin'), 
+        bottom=Side(style='thin')
+    )
+    
+    # Create Summary sheet
+    ws_summary = wb.active
+    ws_summary.title = "Risk Summary"
+    
+    # Add title
+    ws_summary.cell(row=1, column=1, value="Risk Control Matrix Analysis Summary").font = title_font
+    ws_summary.merge_cells('A1:H1')
+    
+    # Add summary info
+    ws_summary.cell(row=3, column=1, value="Departments").font = header_font
+    ws_summary.cell(row=3, column=2, value=", ".join(data.get("departments", [])))
+    
+    # Risk distribution
+    risk_dist = data.get("risk_distribution", {})
+    ws_summary.cell(row=4, column=1, value="Risk Distribution").font = header_font
+    ws_summary.cell(row=5, column=1, value="High Risk Items")
+    ws_summary.cell(row=5, column=2, value=risk_dist.get("High", 0))
+    ws_summary.cell(row=5, column=2).fill = risk_high_fill
+    
+    ws_summary.cell(row=6, column=1, value="Medium Risk Items")
+    ws_summary.cell(row=6, column=2, value=risk_dist.get("Medium", 0))
+    ws_summary.cell(row=6, column=2).fill = risk_medium_fill
+    
+    ws_summary.cell(row=7, column=1, value="Low Risk Items")
+    ws_summary.cell(row=7, column=2, value=risk_dist.get("Low", 0))
+    ws_summary.cell(row=7, column=2).fill = risk_low_fill
+    
+    # Control Objectives sheet
+    ws_controls = wb.create_sheet(title="Control Objectives")
+    
+    # Headers
+    headers = ["Department", "Control Objective", "What Can Go Wrong", "Risk Level", 
+               "Control Activities", "Control/Design Gap", "Proposed Solution"]
+    
+    for col, header in enumerate(headers, start=1):
+        cell = ws_controls.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+    # Add control objectives data
+    control_objectives = data.get("control_objectives", [])
+    for i, obj in enumerate(control_objectives, start=2):
+        ws_controls.cell(row=i, column=1, value=obj.get("department", ""))
+        ws_controls.cell(row=i, column=2, value=obj.get("objective", ""))
+        ws_controls.cell(row=i, column=3, value=obj.get("what_can_go_wrong", ""))
+        
+        risk_level = obj.get("risk_level", "Medium")
+        ws_controls.cell(row=i, column=4, value=risk_level)
+        
+        # Color based on risk level
+        if risk_level == "High":
+            ws_controls.cell(row=i, column=4).fill = risk_high_fill
+        elif risk_level == "Medium":
+            ws_controls.cell(row=i, column=4).fill = risk_medium_fill
+        elif risk_level == "Low":
+            ws_controls.cell(row=i, column=4).fill = risk_low_fill
+            
+        ws_controls.cell(row=i, column=5, value=obj.get("control_activities", ""))
+        ws_controls.cell(row=i, column=6, value=obj.get("gap_details", ""))
+        ws_controls.cell(row=i, column=7, value=obj.get("proposed_control", ""))
+        
+        # Apply borders
+        for col in range(1, 8):
+            ws_controls.cell(row=i, column=col).border = border
+            ws_controls.cell(row=i, column=col).alignment = Alignment(vertical='center', wrap_text=True)
+    
+    # Add drop-down for Risk Level
+    # Set a data validation list in column D from row 2 to last row with data
+    dv = DataValidation(type="list", formula1='"High,Medium,Low"', allow_blank=True)
+    dv.add(f'D2:D{len(control_objectives)+1}')
+    ws_controls.add_data_validation(dv)
+    
+    # Department Risk Analysis sheet
+    ws_dept_risk = wb.create_sheet(title="Department Risk Analysis")
+    
+    # Headers
+    dept_headers = ["Department", "Financial Risk", "Operational Risk", "Compliance Risk", 
+                    "Strategic Risk", "Technological Risk", "Overall Risk"]
+    
+    for col, header in enumerate(dept_headers, start=1):
+        cell = ws_dept_risk.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    
+    # Add department risk data
+    dept_risks = data.get("department_risks", {})
+    row = 2
+    for dept, risks in dept_risks.items():
+        ws_dept_risk.cell(row=row, column=1, value=dept)
+        
+        # Calculate overall risk for each department
+        risk_values = []
+        col = 2
+        
+        for risk_type in ["Financial", "Operational", "Compliance", "Strategic", "Technological"]:
+            risk_value = risks.get(risk_type, 0)
+            risk_values.append(risk_value)
+            
+            # Convert numeric value to text
+            risk_text = "Low"
+            risk_fill = risk_low_fill
+            
+            if risk_value >= 4:
+                risk_text = "High"
+                risk_fill = risk_high_fill
+            elif risk_value >= 2:
+                risk_text = "Medium"
+                risk_fill = risk_medium_fill
+                
+            ws_dept_risk.cell(row=row, column=col, value=risk_text)
+            ws_dept_risk.cell(row=row, column=col).fill = risk_fill
+            ws_dept_risk.cell(row=row, column=col).border = border
+            col += 1
+        
+        # Calculate overall risk
+        avg_risk = sum(risk_values) / len(risk_values) if risk_values else 0
+        risk_text = "Low"
+        risk_fill = risk_low_fill
+        
+        if avg_risk >= 3.5:
+            risk_text = "High"
+            risk_fill = risk_high_fill
+        elif avg_risk >= 2.0:
+            risk_text = "Medium"
+            risk_fill = risk_medium_fill
+            
+        ws_dept_risk.cell(row=row, column=col, value=risk_text)
+        ws_dept_risk.cell(row=row, column=col).fill = risk_fill
+        ws_dept_risk.cell(row=row, column=col).border = border
+        
+        row += 1
+    
+    # Recommendations sheet
+    ws_recommendations = wb.create_sheet(title="Recommendations")
+    
+    # Headers
+    rec_headers = ["Department", "Recommendation", "Priority", "Expected Impact"]
+    
+    for col, header in enumerate(rec_headers, start=1):
+        cell = ws_recommendations.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    
+    # Add recommendations data
+    recommendations = data.get("recommendations", [])
+    for i, rec in enumerate(recommendations, start=2):
+        ws_recommendations.cell(row=i, column=1, value=rec.get("department", ""))
+        ws_recommendations.cell(row=i, column=2, value=rec.get("description", ""))
+        
+        priority = rec.get("priority", "Medium")
+        ws_recommendations.cell(row=i, column=3, value=priority)
+        
+        # Color based on priority
+        if priority == "High":
+            ws_recommendations.cell(row=i, column=3).fill = risk_high_fill
+        elif priority == "Medium":
+            ws_recommendations.cell(row=i, column=3).fill = risk_medium_fill
+        elif priority == "Low":
+            ws_recommendations.cell(row=i, column=3).fill = risk_low_fill
+            
+        ws_recommendations.cell(row=i, column=4, value=rec.get("impact", ""))
+        
+        # Apply borders
+        for col in range(1, 5):
+            ws_recommendations.cell(row=i, column=col).border = border
+            ws_recommendations.cell(row=i, column=col).alignment = Alignment(vertical='center', wrap_text=True)
+    
+    # Add drop-down for Priority
+    dv = DataValidation(type="list", formula1='"High,Medium,Low"', allow_blank=True)
+    dv.add(f'C2:C{len(recommendations)+1}')
+    ws_recommendations.add_data_validation(dv)
+    
+    # Auto-adjust column widths
+    for sheet in wb.worksheets:
+        for col in range(1, sheet.max_column + 1):
+            sheet.column_dimensions[get_column_letter(col)].width = 20
+    
+    # Save to bytes
+    excel_bytes = io.BytesIO()
+    wb.save(excel_bytes)
+    excel_bytes.seek(0)
+    
+    return excel_bytes
 
 def display_simplified_analysis(data):
     """Display a simplified analysis focusing on departmental risks and gaps"""
@@ -173,6 +401,43 @@ def display_simplified_analysis(data):
     if not departments:
         st.warning("No departments found in the document. Please check the file format.")
         return
+    
+    # Add download button for Excel report
+    excel_bytes = create_downloadable_excel(data)
+    st.download_button(
+        label="📥 Download Analysis as Excel",
+        data=excel_bytes,
+        file_name="risk_control_matrix_analysis.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Download a fully formatted Excel file with all analysis data",
+    )
+    
+    # Create CSV download button
+    csv_data = io.StringIO()
+    
+    # Create CSV with control objectives data
+    control_df = pd.DataFrame([
+        {
+            "Department": obj.get("department", ""),
+            "Control Objective": obj.get("objective", ""),
+            "What Can Go Wrong": obj.get("what_can_go_wrong", ""),
+            "Risk Level": obj.get("risk_level", ""),
+            "Control Activities": obj.get("control_activities", ""),
+            "Control/Design Gap": obj.get("gap_details", ""),
+            "Proposed Solution": obj.get("proposed_control", "")
+        }
+        for obj in control_objectives
+    ])
+    
+    control_df.to_csv(csv_data, index=False)
+    
+    st.download_button(
+        label="📥 Download Analysis as CSV",
+        data=csv_data.getvalue(),
+        file_name="risk_control_matrix_analysis.csv",
+        mime="text/csv",
+        help="Download a CSV file with analysis data",
+    )
     
     # Create tabs for each department
     dept_tabs = st.tabs(departments)
@@ -335,6 +600,14 @@ def display_simplified_analysis(data):
             st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("No specific recommendations generated. Consider reviewing the identified gaps.")
+
+    # Add clear button at the bottom
+    st.markdown("---")
+    if st.button("🗑️ Clear Analysis", type="primary", help="Clear all analysis data and start fresh"):
+        # Reset session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
 if __name__ == "__main__":
     main() 

@@ -5,13 +5,8 @@ import json
 from typing import Dict, List, Any, Union
 import logging
 import sys
-
-# Fix SQLite version issue by using pysqlite3
-try:
-    import pysqlite3
-    sys.modules['sqlite3'] = pysqlite3
-except ImportError:
-    pass
+# Use built-in sqlite3 only
+import sqlite3
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,13 +29,30 @@ def initialize_chroma(collection_name: str):
         
         client = chromadb.PersistentClient(path=persist_directory)
         
-        # Get or create collection
+        # Use sentence-transformers for embedding
         try:
-            collection = client.get_collection(name=collection_name)
-            logger.info(f"Loaded existing ChromaDB collection: {collection_name}")
-        except:
-            collection = client.create_collection(name=collection_name)
-            logger.info(f"Created new ChromaDB collection: {collection_name}")
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+            embedding_func = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            logger.info(f"Using SentenceTransformer embeddings with model: all-MiniLM-L6-v2")
+            
+            # Get or create collection with the specified embedding function
+            try:
+                collection = client.get_collection(name=collection_name, embedding_function=embedding_func)
+                logger.info(f"Loaded existing ChromaDB collection: {collection_name}")
+            except:
+                collection = client.create_collection(name=collection_name, embedding_function=embedding_func)
+                logger.info(f"Created new ChromaDB collection: {collection_name}")
+                
+        except Exception as embedding_error:
+            logger.warning(f"Could not use SentenceTransformer: {str(embedding_error)}. Using no embeddings.")
+            
+            # Fallback to creating a collection without embeddings
+            try:
+                collection = client.get_collection(name=collection_name)
+                logger.info(f"Loaded existing ChromaDB collection without embeddings: {collection_name}")
+            except:
+                collection = client.create_collection(name=collection_name)
+                logger.info(f"Created new ChromaDB collection without embeddings: {collection_name}")
         
         return collection
     
@@ -82,13 +94,16 @@ def store_in_chroma(collection, data: Dict[str, Any]):
                     })
                 
                 # Add documents to collection
-                collection.add(
-                    ids=ids,
-                    documents=documents,
-                    metadatas=metadatas
-                )
-                
-                logger.info(f"Stored {len(chunks)} text chunks in ChromaDB")
+                try:
+                    collection.add(
+                        ids=ids,
+                        documents=documents,
+                        metadatas=metadatas
+                    )
+                    logger.info(f"Stored {len(chunks)} text chunks in ChromaDB")
+                except Exception as add_error:
+                    logger.warning(f"Error adding documents to ChromaDB: {str(add_error)}.")
+                    logger.info("Proceeding with analysis without storing in ChromaDB")
         
         else:
             # For structured data from Excel or CSV
@@ -149,17 +164,21 @@ def store_in_chroma(collection, data: Dict[str, Any]):
             
             # Add documents to collection if any
             if ids:
-                collection.add(
-                    ids=ids,
-                    documents=documents,
-                    metadatas=metadatas
-                )
-                
-                logger.info(f"Stored {len(ids)} documents in ChromaDB")
+                try:
+                    collection.add(
+                        ids=ids,
+                        documents=documents,
+                        metadatas=metadatas
+                    )
+                    logger.info(f"Stored {len(ids)} documents in ChromaDB")
+                except Exception as add_error:
+                    logger.warning(f"Error adding documents to ChromaDB: {str(add_error)}.")
+                    logger.info("Proceeding with analysis without storing in ChromaDB") 
     
     except Exception as e:
         logger.error(f"Error storing data in ChromaDB: {str(e)}")
-        raise
+        # Don't raise the exception, just log it and continue
+        logger.info("Proceeding with analysis without storing in ChromaDB")
 
 def query_chroma(collection, query: str, n_results: int = 5, filter_dict: Dict = None):
     """
