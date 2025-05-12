@@ -508,7 +508,7 @@ def generate_department_risk_matrix(data: Dict[str, Any]) -> Dict[str, Dict[str,
 def analyze_department(model, dept: str, objectives: List[Dict[str, Any]], risk_categories: Dict[str, int]) -> Dict[str, Any]:
     """Use Gemini to analyze a specific department"""
     try:
-        # Create prompt for analysis
+        # Format objectives for the prompt
         objectives_text = ""
         for i, obj in enumerate(objectives[:5]):  # Limit to 5 for brevity
             objectives_text += f"{i+1}. Objective: {obj.get('objective', '')}\n"
@@ -535,39 +535,70 @@ def analyze_department(model, dept: str, objectives: List[Dict[str, Any]], risk_
         else:
             suggested_risk = "Low"
         
-        prompt = f"""
-        As a Risk Assessment expert, analyze the following information for the {dept} department:
+        # Create a dedicated solutions prompt for each objective
+        solutions_prompts = []
+        for i, obj in enumerate(objectives):
+            what_can_go_wrong = obj.get("what_can_go_wrong", "")
+            objective = obj.get("objective", "")
+            risk_level = obj.get("risk_level", "Medium")
+            
+            solutions_prompts.append(f"""
+            Objective {i+1}: {objective}
+            What Can Go Wrong: {what_can_go_wrong}
+            Risk Level: {risk_level}
+            
+            For this specific control objective, provide a detailed, tailored solution that directly addresses the risk.
+            """)
         
-        {objectives_text}
+        combined_solutions_prompt = "\n\n".join(solutions_prompts)
+        
+        prompt = f"""
+        You are a Risk Management and Internal Controls Expert with extensive experience in designing control frameworks and providing solutions to address control gaps. I need your help to analyze control objectives for the {dept} department and provide specific, actionable solutions.
+
+        DEPARTMENT: {dept}
+        
+        RISK CATEGORIES:
         {categories_text}
         
-        Based on the data, the suggested overall risk level is: {suggested_risk}
+        CONTROL OBJECTIVES:
+        {objectives_text}
         
-        Focus your analysis on identifying these specific risk types:
-        1. Operational risks (related to processes, workflows, efficiency)
-        2. Financial risks (related to financial reporting, payments, costs)
-        3. Fraud risks (related to misappropriation, theft, falsification)
-        4. Financial fraud risks (specific to accounting manipulation, false reporting)
-        5. Operational fraud risks (related to process manipulation, override of controls)
+        TASK:
+        For EACH control objective above, you must provide:
+        1. A determination of whether there is a control design gap (Yes/No)
+        2. A UNIQUE, DETAILED proposed solution (approximately 50 words, 2-3 sentences) that specifically addresses the risk described in "What Can Go Wrong"
         
-        Provide a comprehensive risk assessment for this department with:
-        1. An overall risk level (High, Medium, or Low)
-        2. A list of 3-5 key risks this department faces, categorized by the above risk types
-        3. A brief summary of the risk profile (2-3 sentences)
+        REQUIREMENTS FOR PROPOSED SOLUTIONS:
+        - Each solution must be tailored to the specific control objective and risk
+        - Solutions must be practical, actionable, and implementable
+        - Solutions must include specific technologies, processes, or controls to implement
+        - AVOID generic solutions that could apply to any risk
+        - AVOID reusing the same or similar solutions for multiple objectives
+        - Each solution should be approximately 50 words (2-3 detailed sentences)
         
-        Respond with ONLY a JSON object:
+        I NEED SPECIFIC SOLUTIONS FOR EACH OF THESE CONTROL OBJECTIVES:
+        {combined_solutions_prompt}
+        
+        Respond with ONLY a JSON object in the following format:
         {{
-            "overall_risk_level": "string",
+            "overall_risk_level": "High/Medium/Low",
             "risk_categories": {json.dumps(risk_categories)},
-            "key_risks": ["string"],
+            "key_risks": ["3-5 key risks identified"],
             "risk_types": {{
-                "Operational": ["string"],
-                "Financial": ["string"],
-                "Fraud": ["string"],
-                "Financial_Fraud": ["string"],
-                "Operational_Fraud": ["string"]
+                "Operational": ["specific operational risks"],
+                "Financial": ["specific financial risks"],
+                "Fraud": ["specific fraud risks"],
+                "Financial_Fraud": ["specific financial fraud risks"],
+                "Operational_Fraud": ["specific operational fraud risks"]
             }},
-            "summary": "string"
+            "summary": "brief department risk summary",
+            "control_gaps": [
+                {{
+                    "objective": "exact text of the control objective",
+                    "has_gap": "Yes/No",
+                    "proposed_solution": "unique, tailored solution of approximately 50 words"
+                }}
+            ]
         }}
         """
         
@@ -584,6 +615,22 @@ def analyze_department(model, dept: str, objectives: List[Dict[str, Any]], risk_
             json_text = response_text.strip()
         
         dept_analysis = json.loads(json_text)
+        
+        # Process control gaps and update objectives with gap information
+        if "control_gaps" in dept_analysis:
+            for gap_info in dept_analysis["control_gaps"]:
+                obj_text = gap_info.get("objective", "")
+                has_gap = gap_info.get("has_gap", "No")
+                proposed_solution = gap_info.get("proposed_solution", "")
+                
+                # Find matching objective and update it
+                for obj in objectives:
+                    if obj.get("objective", "") == obj_text or obj_text in obj.get("objective", ""):
+                        obj["gap_details"] = "Yes" if has_gap.lower() == "yes" else "No"
+                        # Always add the proposed solution regardless of gap status
+                        if proposed_solution:
+                            obj["proposed_control"] = proposed_solution
+        
         return dept_analysis
         
     except Exception as e:
@@ -710,59 +757,81 @@ def generate_recommendations(model, data: Dict[str, Any]) -> List[Dict[str, str]
         return []
 
 def generate_department_recommendations(model, data: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Generate department-specific recommendations"""
+    """Generate recommendations focused on each department"""
     try:
-        # Get departments
+        # Get list of departments
         departments = data.get("departments", [])
         if not departments:
-            # Use recommendations from before
-            if "recommendations" in data:
-                return data["recommendations"]
-            return generate_recommendations(model, data)
-        
-        # Get gaps by department
-        dept_gaps = {}
-        for gap in data.get("gaps", []):
-            dept = gap.get("department", "Unknown")
-            if dept not in dept_gaps:
-                dept_gaps[dept] = []
-            dept_gaps[dept].append(gap)
+            return []
+            
+        # Get department risks
+        dept_risks = data.get("department_risks", {})
         
         all_recommendations = []
         
         for dept in departments:
-            gaps = dept_gaps.get(dept, [])
+            # Collect department-specific data
+            dept_data = dept_risks.get(dept, {})
             
-            if not gaps:
+            # Skip if empty
+            if not dept_data:
                 continue
                 
-            gaps_text = ""
-            for i, gap in enumerate(gaps[:3]):  # Limit to 3 gaps per department
-                gaps_text += f"{i+1}. Gap: {gap.get('gap_title', '')}\n"
-                gaps_text += f"   Description: {gap.get('description', '')}\n"
-                gaps_text += f"   Risk Impact: {gap.get('risk_impact', '')}\n\n"
+            risk_level = dept_data.get("overall_risk_level", "Medium")
+            key_risks = dept_data.get("key_risks", [])
             
+            # Create a summary of risk data for this department
+            dept_info = f"Department: {dept}\n"
+            dept_info += f"Overall Risk Level: {risk_level}\n"
+            
+            if key_risks:
+                dept_info += "Key Risks:\n"
+                for risk in key_risks:
+                    dept_info += f"- {risk}\n"
+                    
+            # Get objectives for this department
+            dept_objectives = [obj for obj in data.get("control_objectives", []) if obj.get("department") == dept]
+            
+            if dept_objectives:
+                # Find high risk objectives
+                high_risk_objs = [obj for obj in dept_objectives if obj.get("risk_level", "").lower() in ["high", "h", "critical"]]
+                med_risk_objs = [obj for obj in dept_objectives if obj.get("risk_level", "").lower() in ["medium", "m", "moderate"]]
+                
+                if high_risk_objs or med_risk_objs:
+                    # Prioritize high risk objectives, then medium
+                    priority_objs = high_risk_objs[:2] + med_risk_objs[:1] if high_risk_objs else med_risk_objs[:2]
+                    
+                    for obj in priority_objs:
+                        dept_info += f"\nControl Objective: {obj.get('objective', '')}\n"
+                        dept_info += f"Risk: {obj.get('what_can_go_wrong', '')}\n"
+                        dept_info += f"Risk Level: {obj.get('risk_level', '')}\n"
+                        
+            # Generate recommendations using Gemini
             prompt = f"""
-            As a Risk Control expert for the {dept} department, analyze these control gaps:
+            As a Risk Control Matrix expert, create detailed, specific recommendations for the {dept} department based on the risk analysis below:
             
-            {gaps_text}
+            {dept_info}
             
-            Generate 1-2 specific recommendations to address these gaps. For each recommendation, provide:
-            1. A concise title
-            2. Priority level (High, Medium, Low)
-            3. A detailed description 
-            4. Expected impact
-            5. Implementation complexity (High, Medium, Low)
+            Create 2-3 specific, actionable recommendations that:
+            1. Address the highest-priority risks identified
+            2. Provide detailed, practical solutions (not general advice)
+            3. Include specific actions, tools, or controls to implement
+            4. Explain the expected impact of implementing the recommendation
             
-            Respond with ONLY a JSON array:
+            For each recommendation, include:
+            - A clear title summarizing the recommendation
+            - A detailed description with specific steps for implementation (at least 3-4 sentences)
+            - The expected impact/benefit
+            - The priority level (High/Medium/Low)
+            
+            Format your response as a JSON array:
             [
                 {{
                     "department": "{dept}",
-                    "title": "string",
-                    "priority": "string",
-                    "description": "string",
-                    "impact": "string",
-                    "complexity": "string"
+                    "title": "Recommendation Title",
+                    "description": "Detailed, specific recommendation with actionable steps",
+                    "impact": "Expected impact of implementation",
+                    "priority": "High/Medium/Low"
                 }}
             ]
             """
@@ -770,9 +839,9 @@ def generate_department_recommendations(model, data: Dict[str, Any]) -> List[Dic
             try:
                 # Get response from Gemini
                 response = model.generate_content(prompt)
+                response_text = response.text
                 
                 # Extract JSON
-                response_text = response.text
                 if "```json" in response_text:
                     json_text = response_text.split("```json")[1].split("```")[0].strip()
                 elif "```" in response_text:
@@ -780,18 +849,34 @@ def generate_department_recommendations(model, data: Dict[str, Any]) -> List[Dic
                 else:
                     json_text = response_text.strip()
                 
+                # Parse recommendations
                 dept_recommendations = json.loads(json_text)
-                all_recommendations.extend(dept_recommendations)
                 
+                # Ensure it's a list
+                if isinstance(dept_recommendations, dict):
+                    dept_recommendations = [dept_recommendations]
+                    
+                all_recommendations.extend(dept_recommendations)
+                    
             except Exception as e:
-                logger.error(f"Error generating recommendations for department {dept}: {str(e)}")
+                logger.error(f"Error generating recommendations for {dept}: {str(e)}")
+                # Add a fallback recommendation
+                all_recommendations.append({
+                    "department": dept,
+                    "title": f"Review Control Framework for {dept}",
+                    "description": f"Conduct a comprehensive review of the control framework in the {dept} department, focusing on high-risk areas. Implement additional preventive controls to address potential gaps and automate manual processes where possible to reduce human error.",
+                    "impact": "Strengthened control environment and reduced risk exposure",
+                    "priority": risk_level
+                })
         
-        # If we couldn't generate any department-specific recommendations, fall back
-        if not all_recommendations:
-            return generate_recommendations(model, data)
-            
         return all_recommendations
-        
+                
     except Exception as e:
         logger.error(f"Error generating department recommendations: {str(e)}")
-        return generate_recommendations(model, data)  # Fall back to original method 
+        return [{
+            "department": "All Departments",
+            "title": "Enhance Risk Control Framework",
+            "description": "Conduct a comprehensive review of the control framework across all departments, focusing on high-risk areas. Implement additional preventive controls and automate manual processes where possible.",
+            "impact": "Strengthened control environment and reduced risk exposure",
+            "priority": "High"
+        }] 

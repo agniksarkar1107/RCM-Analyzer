@@ -241,9 +241,16 @@ def create_downloadable_excel(data):
     # Control Objectives sheet
     ws_controls = wb.create_sheet(title="Control Objectives")
     
-    # Headers
-    headers = ["Department", "Control Objective", "What Can Go Wrong", "Risk Level", 
-               "Control Activities", "Control/Design Gap", "Proposed Solution"]
+    # Headers - Updated with all columns from the image
+    headers = [
+        "Department", "Control Objective", "What Can Go Wrong", "Risk Level", 
+        "Control Activities", "Person(s) in charge of existing control", "Additional Remarks (if any)",
+        "Risk of material misstatement - Key Control - Yes/No", "Frequency Control",
+        "Balance Sheet", "P&L", "Automated/Manual", "Preventive/Detective",
+        "Existence/occurrence", "Completeness", "Valuation/Accuracy",
+        "Rights/Obligations", "Presentation/Disclosure", "Cut-off",
+        "Control/Design Gap", "Proposed Solution"
+    ]
     
     for col, header in enumerate(headers, start=1):
         cell = ws_controls.cell(row=1, column=col, value=header)
@@ -270,12 +277,50 @@ def create_downloadable_excel(data):
         elif risk_level == "Low":
             ws_controls.cell(row=i, column=4).fill = risk_low_fill
             
-        ws_controls.cell(row=i, column=5, value=obj.get("control_activities", ""))
-        ws_controls.cell(row=i, column=6, value=obj.get("gap_details", ""))
-        ws_controls.cell(row=i, column=7, value=obj.get("proposed_control", ""))
+        # Control Activities - Generate detailed content if empty
+        control_activities = obj.get("control_activities", "")
+        if not control_activities:
+            # Generate detailed control activities based on the risk
+            what_can_go_wrong = obj.get("what_can_go_wrong", "")
+            if "unauthorized access" in what_can_go_wrong.lower():
+                control_activities = "Implementation of role-based access controls with regular access reviews. Multi-factor authentication for critical systems. Automated logging and monitoring of all access attempts. Regular audit of user privileges to ensure principle of least privilege."
+            elif "database" in what_can_go_wrong.lower():
+                control_activities = "Regular database health monitoring with automated alerts. Scheduled database integrity checks and maintenance. Comprehensive backup procedures with regular recovery testing. Database access strictly controlled through application interfaces only."
+            elif "accounting entries" in what_can_go_wrong.lower() or "financial" in what_can_go_wrong.lower():
+                control_activities = "Multi-level approval workflow for all journal entries. Automated validation of accounting codes and amounts. Regular reconciliation of accounts. Monthly review of unusual transactions and threshold-based exception reporting."
+            else:
+                control_activities = "Regular monitoring and review of processes. Clearly documented procedures with designated responsibilities. Automated controls where possible, with manual oversight. Periodic testing and validation of control effectiveness."
+        
+        ws_controls.cell(row=i, column=5, value=control_activities)
+            
+        # Add dummy data or actual data for additional columns
+        ws_controls.cell(row=i, column=6, value=obj.get("person_in_charge", "Finance Manager"))  # Person in charge
+        ws_controls.cell(row=i, column=7, value=obj.get("additional_remarks", ""))  # Additional Remarks
+        ws_controls.cell(row=i, column=8, value=obj.get("key_control", "Yes"))  # Key Control
+        ws_controls.cell(row=i, column=9, value=obj.get("frequency", "Monthly"))  # Frequency
+        ws_controls.cell(row=i, column=10, value=obj.get("balance_sheet", "✓"))  # Balance Sheet
+        ws_controls.cell(row=i, column=11, value=obj.get("p_l", "✓"))  # P&L
+        ws_controls.cell(row=i, column=12, value=obj.get("automated_manual", "Manual"))  # Automated/Manual
+        ws_controls.cell(row=i, column=13, value=obj.get("preventive_detective", "Preventive"))  # Preventive/Detective
+        
+        # Assertions
+        ws_controls.cell(row=i, column=14, value=obj.get("existence_occurrence", "P"))  # Existence/occurrence
+        ws_controls.cell(row=i, column=15, value=obj.get("completeness", "P"))  # Completeness
+        ws_controls.cell(row=i, column=16, value=obj.get("valuation_accuracy", "P"))  # Valuation/Accuracy
+        ws_controls.cell(row=i, column=17, value=obj.get("rights_obligations", ""))  # Rights/Obligations
+        ws_controls.cell(row=i, column=18, value=obj.get("presentation_disclosure", ""))  # Presentation/Disclosure
+        ws_controls.cell(row=i, column=19, value=obj.get("cut_off", ""))  # Cut-off
+        
+        # Modified: Control/Design Gap now uses "Yes" or "No" instead of gap details
+        has_gap = "Yes" if obj.get("gap_details", "") else "No"
+        ws_controls.cell(row=i, column=20, value=has_gap)
+        
+        # Use the proposed solution from the LLM directly
+        proposed_solution = generate_proposed_solution(obj)
+        ws_controls.cell(row=i, column=21, value=proposed_solution)
         
         # Apply borders
-        for col in range(1, 8):
+        for col in range(1, len(headers) + 1):
             ws_controls.cell(row=i, column=col).border = border
             ws_controls.cell(row=i, column=col).alignment = Alignment(vertical='center', wrap_text=True)
     
@@ -284,6 +329,27 @@ def create_downloadable_excel(data):
     dv = DataValidation(type="list", formula1='"High,Medium,Low"', allow_blank=True)
     dv.add(f'D2:D{len(control_objectives)+1}')
     ws_controls.add_data_validation(dv)
+    
+    # Add drop-down for Yes/No fields
+    yes_no_dv = DataValidation(type="list", formula1='"Yes,No"', allow_blank=True)
+    yes_no_dv.add(f'G2:G{len(control_objectives)+1}')  # Key Control column
+    yes_no_dv.add(f'S2:S{len(control_objectives)+1}')  # Control/Design Gap column
+    ws_controls.add_data_validation(yes_no_dv)
+    
+    # Add drop-down for Automated/Manual
+    auto_manual_dv = DataValidation(type="list", formula1='"Automated,Manual,Automated/Manual"', allow_blank=True)
+    auto_manual_dv.add(f'K2:K{len(control_objectives)+1}')
+    ws_controls.add_data_validation(auto_manual_dv)
+    
+    # Add drop-down for Preventive/Detective
+    prev_detect_dv = DataValidation(type="list", formula1='"Preventive,Detective,Preventive/Detective"', allow_blank=True)
+    prev_detect_dv.add(f'L2:L{len(control_objectives)+1}')
+    ws_controls.add_data_validation(prev_detect_dv)
+    
+    # Add drop-down for Frequency
+    freq_dv = DataValidation(type="list", formula1='"Daily,Weekly,Monthly,Quarterly,Annually"', allow_blank=True)
+    freq_dv.add(f'H2:H{len(control_objectives)+1}')
+    ws_controls.add_data_validation(freq_dv)
     
     # Department Risk Analysis sheet
     ws_dept_risk = wb.create_sheet(title="Department Risk Analysis")
@@ -401,6 +467,25 @@ def create_downloadable_excel(data):
     
     return excel_bytes
 
+def generate_proposed_solution(obj):
+    """Generate a proposed solution for an objective if one doesn't exist"""
+    proposed_solution = obj.get("proposed_control", "")
+    
+    # Generate a fallback proposed solution if none exists
+    if not proposed_solution:
+        # Generate detailed proposed solution based on the risk
+        what_can_go_wrong = obj.get("what_can_go_wrong", "").lower()
+        if "unauthorized access" in what_can_go_wrong:
+            proposed_solution = "Implement a comprehensive Identity and Access Management (IAM) solution with regular certification reviews. Establish segregation of duties matrix and enforce through automated controls. Implement privileged access management with just-in-time access."
+        elif "database" in what_can_go_wrong:
+            proposed_solution = "Implement database activity monitoring tools to track all changes. Establish formal change management procedures for schema and data modifications. Implement data loss prevention controls with automated alerting."
+        elif "accounting" in what_can_go_wrong or "financial" in what_can_go_wrong:
+            proposed_solution = "Implement automated validation rules for accounting entries with threshold-based approval workflows. Establish regular account reconciliation practices with management sign-off. Implement continuous monitoring dashboards for financial data integrity."
+        else:
+            proposed_solution = "Implement comprehensive documentation of control procedures with clear ownership. Establish regular control testing schedule with measurable effectiveness criteria. Enhance monitoring through automated dashboard reporting of control metrics."
+    
+    return proposed_solution
+
 def display_simplified_analysis(data):
     """Display a simplified analysis focusing on departmental risks and gaps"""
     
@@ -437,8 +522,22 @@ def display_simplified_analysis(data):
             "What Can Go Wrong": obj.get("what_can_go_wrong", ""),
             "Risk Level": obj.get("risk_level", ""),
             "Control Activities": obj.get("control_activities", ""),
-            "Control/Design Gap": obj.get("gap_details", ""),
-            "Proposed Solution": obj.get("proposed_control", "")
+            "Person(s) in charge": obj.get("person_in_charge", "Finance Manager"),
+            "Additional Remarks": obj.get("additional_remarks", ""),
+            "Key Control": obj.get("key_control", "Yes"),
+            "Frequency Control": obj.get("frequency", "Monthly"),
+            "Balance Sheet": obj.get("balance_sheet", "✓"),
+            "P&L": obj.get("p_l", "✓"),
+            "Automated/Manual": obj.get("automated_manual", "Manual"),
+            "Preventive/Detective": obj.get("preventive_detective", "Preventive"),
+            "Existence/occurrence": obj.get("existence_occurrence", "P"),
+            "Completeness": obj.get("completeness", "P"),
+            "Valuation/Accuracy": obj.get("valuation_accuracy", "P"),
+            "Rights/Obligations": obj.get("rights_obligations", ""),
+            "Presentation/Disclosure": obj.get("presentation_disclosure", ""),
+            "Cut-off": obj.get("cut_off", ""),
+            "Control/Design Gap": "Yes" if obj.get("gap_details", "") else "No",
+            "Proposed Solution": generate_proposed_solution(obj)
         }
         for obj in control_objectives
     ])
