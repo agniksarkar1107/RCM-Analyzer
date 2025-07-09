@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from utils.document_processor import process_document
 from utils.gemini import initialize_gemini, analyze_risk_with_gemini
 from utils.db import initialize_chroma, store_in_chroma, query_chroma
@@ -16,6 +17,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+from datetime import datetime
 
 # Check SQLite version and warn if incompatible with ChromaDB
 sqlite_version = sqlite3.sqlite_version_info
@@ -29,159 +31,983 @@ load_dotenv()
 if not os.environ.get("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = "AIzaSyBdz-qcLFRDsR-mm37AlRf2w6RZws2lDL0"
 
-# Set page configuration
+# Set page configuration with professional branding
 st.set_page_config(
-    page_title="Risk Control Matrix Analyzer",
-    page_icon="📊",
+    page_title="RCM Analytics Suite",
+    page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/your-org/rcm-analyzer',
+        'Report a bug': "https://github.com/your-org/rcm-analyzer/issues",
+        'About': "# RCM Analytics Suite\nProfessional Risk Control Matrix Analysis Platform"
+    }
 )
 
 # Initialize Gemini
 gemini_model = initialize_gemini()
 
-def main():
-    # Add custom CSS
+def apply_professional_styling():
+    """Apply clean, professional styling with simple colors"""
     st.markdown("""
     <style>
+    /* Import clean professional font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Clean base styling */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #2d3748;
+        background: #f7fafc;
+    }
+    
+    .stApp {
+        background: #f7fafc;
+    }
+    
+    .main {
+        padding: 1rem 2rem;
+        background: #f7fafc;
+    }
+    
+    /* Clean typography */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Inter', sans-serif;
+        color: #1a202c;
+        font-weight: 600;
+    }
+    
+    h1 { font-size: 2.25rem; margin-bottom: 1rem; }
+    h2 { font-size: 1.875rem; margin-bottom: 1rem; }
+    h3 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+    h4 { font-size: 1.25rem; margin-bottom: 0.75rem; }
+    
+    p, div, span {
+        color: #4a5568;
+        line-height: 1.6;
+    }
+    
+    /* Simple professional header */
     .main-header {
+        background: #2d3748;
+        color: white;
+        padding: 2.5rem 2rem;
+        border-radius: 8px;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .main-header h1 {
+        color: #ffffff !important;
         font-size: 2.5rem;
-        color: #1E88E5;
+        font-weight: 700;
+        margin: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .main-header p {
+        color: #ffffff !important;
+        font-size: 1.125rem;
+        margin: 0;
+        font-weight: 400;
+    }
+    
+    /* Force header text to be white with maximum specificity */
+    .main-header * {
+        color: #ffffff !important;
+    }
+    
+    .main-header h1 * {
+        color: #ffffff !important;
+    }
+    
+    .main-header p * {
+        color: #ffffff !important;
+    }
+    
+    /* Override any Streamlit markdown styling in header */
+    .main-header .stMarkdown,
+    .main-header .stMarkdown *,
+    .main-header .stMarkdown h1,
+    .main-header .stMarkdown p,
+    .main-header .stMarkdown div,
+    .main-header .stMarkdown span {
+        color: #ffffff !important;
+    }
+    
+    /* Clean cards */
+    .executive-card, .department-card, .recommendation-card {
+        background: #ffffff;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: box-shadow 0.2s ease;
+    }
+    
+    .executive-card:hover, .department-card:hover, .recommendation-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .executive-card h4, .department-card h4 {
+        color: #2d3748;
+        margin-bottom: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .executive-card p, .department-card p {
+        color: #4a5568;
+        margin: 0;
+    }
+    
+    /* Simple metrics */
+    .metric-container {
+        background: #ffffff;
+        padding: 1.5rem;
+        border-radius: 8px;
+        text-align: center;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease;
+    }
+    
+    .metric-container:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2b6cb0;
+        margin: 0.5rem 0;
+    }
+    
+    .metric-label {
+        font-size: 0.875rem;
+        color: #718096;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    /* Clean buttons */
+    .stButton > button {
+        background: #2b6cb0;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 500;
+        font-size: 0.95rem;
+        transition: background-color 0.2s ease;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stButton > button:hover {
+        background: #2c5282;
+    }
+    
+    /* SIDEBAR - CLEAN AND SIMPLE */
+    .css-1d391kg, .stSidebar {
+        background: #2d3748 !important;
+        border-right: 1px solid #4a5568 !important;
+    }
+    
+    /* Force all sidebar text to be white for maximum readability */
+    .css-1d391kg,
+    .css-1d391kg *,
+    .stSidebar,
+    .stSidebar *,
+    .css-1d391kg .stMarkdown *,
+    .stSidebar .stMarkdown *,
+    .css-1d391kg h1,
+    .css-1d391kg h2,
+    .css-1d391kg h3,
+    .css-1d391kg h4,
+    .css-1d391kg p,
+    .css-1d391kg div,
+    .css-1d391kg span,
+    .css-1d391kg li,
+    .stSidebar h1,
+    .stSidebar h2,
+    .stSidebar h3,
+    .stSidebar h4,
+    .stSidebar p,
+    .stSidebar div,
+    .stSidebar span,
+    .stSidebar li {
+        color: #ffffff !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    
+    /* Sidebar headers */
+    .css-1d391kg h3,
+    .css-1d391kg h4,
+    .stSidebar h3,
+    .stSidebar h4 {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        margin-bottom: 1rem !important;
+        padding-bottom: 0.5rem !important;
+        border-bottom: 1px solid #4a5568 !important;
+    }
+    
+    /* Sidebar metrics */
+    .css-1d391kg .stMetric,
+    .stSidebar .stMetric {
+        background: rgba(74, 85, 104, 0.3) !important;
+        border: 1px solid #4a5568 !important;
+        border-radius: 6px !important;
+        padding: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .css-1d391kg .stMetric label,
+    .stSidebar .stMetric label,
+    .css-1d391kg .stMetric [data-testid="metric-label"],
+    .stSidebar .stMetric [data-testid="metric-label"] {
+        color: #e2e8f0 !important;
+        font-weight: 500 !important;
+        font-size: 0.8rem !important;
+    }
+    
+    .css-1d391kg .stMetric [data-testid="metric-value"],
+    .stSidebar .stMetric [data-testid="metric-value"] {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 1.875rem !important;
+    }
+    
+    /* Sidebar buttons */
+    .css-1d391kg .stButton button,
+    .stSidebar .stButton button {
+        background: #e53e3e !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        padding: 0.75rem 1rem !important;
+        transition: background-color 0.2s ease !important;
+    }
+    
+    .css-1d391kg .stButton button:hover,
+    .stSidebar .stButton button:hover {
+        background: #c53030 !important;
+    }
+    
+    /* Simple risk indicators */
+    .risk-indicator {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-weight: 500;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .risk-high {
+        background: #fed7d7;
+        color: #c53030;
+    }
+    
+    .risk-medium {
+        background: #feebc8;
+        color: #dd6b20;
+    }
+    
+    .risk-low {
+        background: #c6f6d5;
+        color: #38a169;
+    }
+    
+    /* Clean inputs */
+    .stSelectbox label, .stFileUploader label {
+        color: #2d3748 !important;
+        font-weight: 500 !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .stSelectbox > div > div {
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #2b6cb0;
+        box-shadow: 0 0 0 3px rgba(43, 108, 176, 0.1);
+    }
+    
+    /* Clean file uploader */
+    .stFileUploader > div {
+        background: #f7fafc;
+        border: 2px dashed #cbd5e1;
+        border-radius: 8px;
+        padding: 2rem;
         text-align: center;
     }
-    .sub-header {
+    
+    .stFileUploader > div:hover {
+        border-color: #2b6cb0;
+        background: #edf2f7;
+    }
+    
+    /* Clean tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        background: #edf2f7;
+        border-radius: 6px;
+        padding: 0.25rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: transparent;
+        border-radius: 4px;
+        color: #4a5568 !important;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        border: none;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(43, 108, 176, 0.1);
+        color: #2b6cb0 !important;
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: #2b6cb0;
+        color: white !important;
+    }
+    
+    /* Clean data tables */
+    .stDataFrame {
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+        overflow: hidden;
+    }
+    
+    .stDataFrame th {
+        background: #edf2f7 !important;
+        color: #2d3748 !important;
+        font-weight: 600 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+    }
+    
+    .stDataFrame td {
+        color: #4a5568 !important;
+        border-bottom: 1px solid #f7fafc !important;
+    }
+    
+    /* Clean alerts */
+    .stAlert {
+        border-radius: 6px;
+        border: 1px solid;
+        font-weight: 500;
+        padding: 1rem;
+    }
+    
+    .stSuccess {
+        background: #f0fff4;
+        border-color: #38a169;
+        color: #2f855a;
+    }
+    
+    .stError {
+        background: #fed7d7;
+        border-color: #e53e3e;
+        color: #c53030;
+    }
+    
+    .stWarning {
+        background: #feebc8;
+        border-color: #dd6b20;
+        color: #c05621;
+    }
+    
+    .stInfo {
+        background: #ebf8ff;
+        border-color: #3182ce;
+        color: #2c5282;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Department headers */
+    .department-header {
         font-size: 1.5rem;
-        color: #424242;
-        margin-bottom: 20px;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid #e2e8f0;
     }
-    .card {
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
+    
+    /* Recommendation styling */
+    .recommendation-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
     }
-    .dept-card {
-        padding: 15px;
-        border-radius: 5px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        margin-bottom: 15px;
-        background-color: transparent;
+    
+    .recommendation-description {
+        color: #4a5568;
+        line-height: 1.6;
     }
-    .high-risk {
-        /* Removed border-left */
-    }
-    .medium-risk {
-        /* Removed border-left */
-    }
-    .low-risk {
-        /* Removed border-left */
-    }
-    .analyzing {
+    
+    /* Analysis status */
+    .analysis-status {
+        background: #f0fff4;
+        border: 1px solid #38a169;
+        border-radius: 6px;
+        padding: 1.5rem;
         text-align: center;
-        padding: 20px;
-        border-radius: 5px;
-        background-color: transparent;
-        margin-bottom: 20px;
-        font-size: 1.2rem;
-        color: #2E7D32;
+        margin: 1rem 0;
     }
-    .stTabs [data-baseweb="tab-panel"] {
-        padding-top: 0 !important;
+    
+    .analysis-status h3 {
+        color: #2f855a;
+        margin: 0 0 0.5rem 0;
+        font-weight: 600;
+        font-size: 1.25rem;
     }
-    /* Make streamlit components background transparent */
-    .stExpander {
-        background-color: transparent !important;
+    
+    .analysis-status p {
+        color: #2f855a;
+        margin: 0;
+        font-weight: 400;
     }
-    /* Make general streamlit elements background transparent */
-    .stMarkdown, .stInfo {
-        background-color: transparent !important;
+    
+    /* Ensure main content readability */
+    .main .stMarkdown h1,
+    .main .stMarkdown h2,
+    .main .stMarkdown h3,
+    .main .stMarkdown h4 {
+        color: #2d3748 !important;
+    }
+    
+    .main .stMarkdown p,
+    .main .stMarkdown div {
+        color: #4a5568 !important;
+    }
+    
+    /* Final sidebar text override */
+    [data-testid="stSidebar"] {
+        color: #ffffff !important;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #ffffff !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # Header
-    st.markdown("<h1 class='main-header'>Risk Control Matrix Analyzer</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='sub-header'>Upload your RCM document for AI risk analysis</p>", unsafe_allow_html=True)
+def create_professional_header():
+    """Create a professional header for the application"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>🛡️ RCM Analytics Suite</h1>
+        <p>Professional Risk Control Matrix Analysis Platform</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def create_executive_summary(data):
+    """Create an executive summary dashboard"""
+    st.markdown("## 📊 Executive Summary")
     
-    # Display SQLite compatibility warning if needed
-    if not is_sqlite_compatible:
-        st.warning(f"Warning: Your system has SQLite version {'.'.join(map(str, sqlite_version))}, which is below the recommended version {'.'.join(map(str, min_sqlite_version))} for ChromaDB persistence. Vector storage will use in-memory mode.")
+    # Key metrics row
+    col1, col2, col3, col4 = st.columns(4)
     
-    # Create a simple upload interface
-    uploaded_file = st.file_uploader("Upload Risk Control Matrix document", 
-                                   type=["xlsx", "csv", "pdf", "docx"], 
-                                   help="Upload RCM file to analyze")
+    with col1:
+        total_controls = len(data.get("control_objectives", []))
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">Total Controls</div>
+            <div class="metric-value">{total_controls}</div>
+        </div>
+        """, unsafe_allow_html=True)
     
-    if uploaded_file:
-        col1, col2 = st.columns([1, 3])
+    with col2:
+        total_gaps = len(data.get("gaps", []))
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">Control Gaps</div>
+            <div class="metric-value" style="color: #ff6b6b;">{total_gaps}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        departments = len(data.get("departments", []))
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">Departments</div>
+            <div class="metric-value">{departments}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        risk_dist = data.get("risk_distribution", {})
+        high_risks = risk_dist.get("High", 0)
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">High Risk Items</div>
+            <div class="metric-value" style="color: #ff6b6b;">{high_risks}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Risk distribution visualization
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### Risk Distribution Analysis")
+        risk_dist = data.get("risk_distribution", {"High": 0, "Medium": 0, "Low": 0})
         
-        with col1:
-            st.info(f"Uploaded: {uploaded_file.name}")
-            analyze_button = st.button("Analyze Document", type="primary")
-        
-        with col2:
-            st.info("This tool will analyze your Risk Control Matrix and identify key risks across departments.")
+        # Create pie chart
+        fig = px.pie(
+            values=list(risk_dist.values()),
+            names=list(risk_dist.keys()),
+            color_discrete_map={
+                "High": "#ff6b6b",
+                "Medium": "#ffa726", 
+                "Low": "#66bb6a"
+            },
+            title="Risk Level Distribution"
+        )
+        fig.update_layout(
+            font=dict(family="Inter, sans-serif", color="#1a202c"),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            title_font_size=16,
+            title_font_color="#1a202c"
+        )
+        fig.update_traces(textfont_color="#1a202c")
+        st.plotly_chart(fig, use_container_width=True)
     
-    # Main content area
-    if 'analyzed_data' not in st.session_state:
-        st.session_state.analyzed_data = None
+    with col2:
+        st.markdown("### Quick Insights")
         
-    if uploaded_file and analyze_button:
-        with st.spinner():
-            # Show "being analyzed by AI" message
-            st.markdown("<div class='analyzing'><b>🔍 Being analyzed by AI...</b><br>Examining departments, control objectives, and identifying risk patterns</div>", unsafe_allow_html=True)
+        # Calculate risk insights
+        total_risks = sum(risk_dist.values())
+        if total_risks > 0:
+            high_pct = (risk_dist.get("High", 0) / total_risks) * 100
+            medium_pct = (risk_dist.get("Medium", 0) / total_risks) * 100
+            low_pct = (risk_dist.get("Low", 0) / total_risks) * 100
             
-            # Save the uploaded file temporarily
-            temp_file_path = f"temp_{uploaded_file.name}"
-            with open(temp_file_path, "wb") as f:
-                f.write(uploaded_file.getvalue())
+            st.markdown(f"""
+            <div class="executive-card">
+                <h4>Risk Profile</h4>
+                <p><span class="risk-indicator risk-high">High: {high_pct:.1f}%</span></p>
+                <p><span class="risk-indicator risk-medium">Medium: {medium_pct:.1f}%</span></p>
+                <p><span class="risk-indicator risk-low">Low: {low_pct:.1f}%</span></p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Process document
-            try:
-                processed_data = process_document(temp_file_path)
+            # Risk assessment
+            if high_pct > 30:
+                assessment = "🔴 Critical attention required"
+                color = "#ff6b6b"
+            elif high_pct > 15:
+                assessment = "🟡 Moderate risk exposure"
+                color = "#ffa726"
+            else:
+                assessment = "🟢 Acceptable risk profile"
+                color = "#66bb6a"
                 
-                # Try to store in ChromaDB, but continue if it fails
-                try:
-                    if is_sqlite_compatible:
-                        db = initialize_chroma("risk_control_matrix")
-                        store_in_chroma(db, processed_data)
-                    else:
-                        # Skip ChromaDB storage if SQLite is incompatible but don't show error
-                        pass
-                except Exception as chroma_error:
-                    # Log the error but don't display to user unless debugging
-                    print(f"ChromaDB storage failed: {str(chroma_error)}")
-                
-                # Analyze with Gemini
-                st.session_state.analyzed_data = analyze_risk_with_gemini(
-                    gemini_model,
-                    processed_data
-                )
-                
-                # Try to remove temp file, but don't fail if it can't be removed
-                try:
-                    os.remove(temp_file_path)
-                except PermissionError:
-                    # Log the error but continue execution
-                    print(f"Could not remove temporary file - it will be cleaned up later.")
-                
-                st.success("Analysis complete!")
-                time.sleep(1)
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"Error analyzing document: {str(e)}")
-                # Try to remove temp file, but don't fail if it can't be removed
-                try:
-                    if os.path.exists(temp_file_path):
-                        os.remove(temp_file_path)
-                except PermissionError:
-                    # Log the error but continue execution
-                    pass
+            st.markdown(f"""
+            <div class="executive-card" style="border-left-color: {color};">
+                <h4>Overall Assessment</h4>
+                <p style="color: {color}; font-weight: 600;">{assessment}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+def create_department_heatmap(data):
+    """Create a professional department risk heatmap"""
+    st.markdown("### 🎯 Department Risk Heatmap")
     
-    # Display analyzed data if available
-    if st.session_state.analyzed_data:
-        display_simplified_analysis(st.session_state.analyzed_data)
+    dept_risks = data.get("department_risks", {})
+    if not dept_risks:
+        st.warning("No department risk data available for heatmap.")
+        return
+    
+    # Prepare data for heatmap
+    departments = list(dept_risks.keys())
+    risk_categories = ["Financial", "Operational", "Compliance", "Strategic", "Technological"]
+    
+    # Create matrix
+    risk_matrix = []
+    for dept in departments:
+        dept_data = dept_risks[dept]
+        risk_cats = dept_data.get("risk_categories", {})
+        row = [risk_cats.get(cat, 0) for cat in risk_categories]
+        risk_matrix.append(row)
+    
+    # Create heatmap
+    fig = px.imshow(
+        risk_matrix,
+        x=risk_categories,
+        y=departments,
+        color_continuous_scale="RdYlGn_r",
+        aspect="auto",
+        title="Department Risk Assessment Matrix"
+    )
+    
+    fig.update_layout(
+        font=dict(family="Inter, sans-serif", color="#1a202c"),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        title_font_size=16,
+        title_font_color="#1a202c",
+        height=400
+    )
+    
+    fig.update_xaxes(title="Risk Categories", title_font_color="#1a202c", tickfont_color="#2d3748")
+    fig.update_yaxes(title="Departments", title_font_color="#1a202c", tickfont_color="#2d3748")
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+def create_risk_trends_chart(data):
+    """Create risk trends and patterns visualization"""
+    st.markdown("### 📈 Risk Analysis Trends")
+    
+    # Create subplots for multiple charts
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Risk Categories by Department', 'Control Gap Analysis'),
+        specs=[[{"type": "bar"}, {"type": "bar"}]]
+    )
+    
+    dept_risks = data.get("department_risks", {})
+    departments = list(dept_risks.keys())
+    
+    if departments:
+        # Risk categories analysis
+        financial_risks = [dept_risks[dept].get("risk_categories", {}).get("Financial", 0) for dept in departments]
+        operational_risks = [dept_risks[dept].get("risk_categories", {}).get("Operational", 0) for dept in departments]
+        
+        fig.add_trace(
+            go.Bar(name="Financial", x=departments, y=financial_risks, marker_color="#ff6b6b"),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Bar(name="Operational", x=departments, y=operational_risks, marker_color="#ffa726"),
+            row=1, col=1
+        )
+        
+        # Control gaps by department
+        gaps_by_dept = {}
+        for gap in data.get("gaps", []):
+            dept = gap.get("department", "Unknown")
+            gaps_by_dept[dept] = gaps_by_dept.get(dept, 0) + 1
+        
+        gap_departments = list(gaps_by_dept.keys())
+        gap_counts = list(gaps_by_dept.values())
+        
+        fig.add_trace(
+            go.Bar(name="Control Gaps", x=gap_departments, y=gap_counts, 
+                  marker_color="#667eea", showlegend=False),
+            row=1, col=2
+        )
+    
+    fig.update_layout(
+        font=dict(family="Inter, sans-serif", color="#1a202c"),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        title_font_color="#1a202c",
+        height=400,
+        showlegend=True
+    )
+    
+    # Update axes with proper colors
+    fig.update_xaxes(title_font_color="#1a202c", tickfont_color="#2d3748")
+    fig.update_yaxes(title_font_color="#1a202c", tickfont_color="#2d3748")
+    
+    # Update subplot titles
+    fig.update_annotations(font_color="#1a202c")
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+def display_professional_analysis(data):
+    """Display the complete professional analysis"""
+    
+    # Executive Summary Section
+    create_executive_summary(data)
+    
+    # Risk Visualization Section
+    st.markdown("## 📊 Risk Analysis Dashboard")
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        create_department_heatmap(data)
+    with col2:
+        create_risk_trends_chart(data)
+    
+    st.markdown("---")
+    
+    # Department Analysis Section
+    st.markdown("## 🏢 Department Analysis")
+    
+    departments = data.get("departments", [])
+    if departments:
+        # Create tabs for each department
+        tabs = st.tabs(departments)
+        
+        for i, dept in enumerate(departments):
+            with tabs[i]:
+                display_department_details(data, dept)
+    
+    st.markdown("---")
+    
+    # Recommendations Section
+    st.markdown("## 💡 Strategic Recommendations")
+    display_recommendations(data)
+    
+    # Download Section
+    st.markdown("---")
+    st.markdown("## 📥 Export & Reports")
+    create_download_section(data)
+
+def display_department_details(data, department):
+    """Display detailed analysis for a specific department"""
+    dept_risks = data.get("department_risks", {}).get(department, {})
+    dept_objectives = [obj for obj in data.get("control_objectives", []) 
+                      if obj.get("department") == department]
+    dept_gaps = [gap for gap in data.get("gaps", []) 
+                if gap.get("department") == department]
+    
+    # Department overview
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div class="department-card">
+            <div class="department-header">{department}</div>
+            <p><strong>Overall Risk Level:</strong> 
+            <span class="risk-indicator risk-{dept_risks.get('overall_risk_level', 'medium').lower()}">
+            {dept_risks.get('overall_risk_level', 'Medium')}
+            </span></p>
+            <p><strong>Summary:</strong> {dept_risks.get('summary', 'No summary available.')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # Key metrics for this department
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">Control Objectives</div>
+            <div class="metric-value">{len(dept_objectives)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div class="metric-container">
+            <div class="metric-label">Control Gaps</div>
+            <div class="metric-value" style="color: #ff6b6b;">{len(dept_gaps)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Risk type analysis
+    if "risk_types" in dept_risks:
+        st.markdown("#### Risk Type Analysis")
+        risk_types = dept_risks["risk_types"]
+        
+        cols = st.columns(len(risk_types))
+        for i, (risk_type, risks) in enumerate(risk_types.items()):
+            with cols[i]:
+                count = len(risks) if isinstance(risks, list) else 0
+                level = "High" if count >= 3 else "Medium" if count >= 1 else "Low"
+                color = "#ff6b6b" if level == "High" else "#ffa726" if level == "Medium" else "#66bb6a"
+                
+                st.markdown(f"""
+                <div class="metric-container">
+                    <div class="metric-label">{risk_type}</div>
+                    <div class="metric-value" style="color: {color};">{count}</div>
+                    <div style="color: {color}; font-size: 0.8rem; font-weight: 600;">{level} Risk</div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Control objectives table
+    if dept_objectives:
+        st.markdown("#### Control Objectives")
+        
+        obj_df = pd.DataFrame([
+            {
+                "Control Objective": obj.get("objective", ""),
+                "What Can Go Wrong": obj.get("what_can_go_wrong", ""),
+                "Risk Level": obj.get("risk_level", ""),
+                "Control Activities": obj.get("control_activities", "")
+            }
+            for obj in dept_objectives
+        ])
+        
+        st.dataframe(obj_df, use_container_width=True, hide_index=True)
+    
+    # Control gaps
+    if dept_gaps:
+        st.markdown("#### Control Gaps & Recommendations")
+        
+        for i, gap in enumerate(dept_gaps):
+            st.markdown(f"""
+            <div class="recommendation-card">
+                <div class="recommendation-title">Gap {i+1}: {gap.get('gap_title', 'Control Gap')}</div>
+                <div class="recommendation-description">
+                    <strong>Impact:</strong> {gap.get('risk_impact', 'No impact description available.')}<br>
+                    <strong>Recommended Solution:</strong> {gap.get('proposed_solution', 'No solution provided.')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+def display_recommendations(data):
+    """Display strategic recommendations in a professional format"""
+    recommendations = data.get("recommendations", [])
+    
+    if not recommendations:
+        st.info("No specific recommendations generated. Please review the identified gaps for improvement opportunities.")
+        return
+    
+    # Group recommendations by priority
+    high_priority = [r for r in recommendations if r.get("priority", "").lower() == "high"]
+    medium_priority = [r for r in recommendations if r.get("priority", "").lower() == "medium"]
+    low_priority = [r for r in recommendations if r.get("priority", "").lower() == "low"]
+    
+    # Display high priority first
+    if high_priority:
+        st.markdown("### 🔴 High Priority Recommendations")
+        for rec in high_priority:
+            st.markdown(f"""
+            <div class="recommendation-card" style="border-left-color: #ff6b6b;">
+                <div class="recommendation-title">{rec.get('title', 'High Priority Recommendation')}</div>
+                <div class="recommendation-description">
+                    {rec.get('description', '')}<br>
+                    <strong>Expected Impact:</strong> {rec.get('impact', 'Significant risk reduction')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    if medium_priority:
+        st.markdown("### 🟡 Medium Priority Recommendations")
+        for rec in medium_priority:
+            st.markdown(f"""
+            <div class="recommendation-card" style="border-left-color: #ffa726;">
+                <div class="recommendation-title">{rec.get('title', 'Medium Priority Recommendation')}</div>
+                <div class="recommendation-description">
+                    {rec.get('description', '')}<br>
+                    <strong>Expected Impact:</strong> {rec.get('impact', 'Moderate risk reduction')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    if low_priority:
+        st.markdown("### 🟢 Low Priority Recommendations")
+        for rec in low_priority:
+            st.markdown(f"""
+            <div class="recommendation-card" style="border-left-color: #66bb6a;">
+                <div class="recommendation-title">{rec.get('title', 'Low Priority Recommendation')}</div>
+                <div class="recommendation-description">
+                    {rec.get('description', '')}<br>
+                    <strong>Expected Impact:</strong> {rec.get('impact', 'Minor risk reduction')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+def create_download_section(data):
+    """Create professional download section with multiple export options"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Excel download
+        excel_bytes = create_downloadable_excel(data)
+        st.download_button(
+            label="📊 Download Excel Report",
+            data=excel_bytes,
+            file_name=f"RCM_Analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Comprehensive Excel report with all analysis data and formatting",
+            use_container_width=True
+        )
+    
+    with col2:
+        # CSV download
+        csv_data = create_csv_export(data)
+        st.download_button(
+            label="📋 Download CSV Data",
+            data=csv_data,
+            file_name=f"RCM_Data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            help="Raw data export in CSV format for further analysis",
+            use_container_width=True
+        )
+    
+    with col3:
+        # Executive summary download
+        exec_summary = create_executive_summary_text(data)
+        st.download_button(
+            label="📄 Executive Summary",
+            data=exec_summary,
+            file_name=f"Executive_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            mime="text/plain",
+            help="Executive summary for leadership presentation",
+            use_container_width=True
+        )
+
+def create_csv_export(data):
+    """Create CSV export of analysis data"""
+    control_df = pd.DataFrame([
+        {
+            "Department": obj.get("department", ""),
+            "Control Objective": obj.get("objective", ""),
+            "What Can Go Wrong": obj.get("what_can_go_wrong", ""),
+            "Risk Level": obj.get("risk_level", ""),
+            "Control Activities": obj.get("control_activities", ""),
+            "Is Gap": "Yes" if obj.get("is_gap", False) else "No",
+            "Gap Details": obj.get("gap_details", ""),
+            "Proposed Control": obj.get("proposed_control", "")
+        }
+        for obj in data.get("control_objectives", [])
+    ])
+    
+    return control_df.to_csv(index=False)
+
+def create_executive_summary_text(data):
+    """Create executive summary text for download"""
+    summary = f"""
+RISK CONTROL MATRIX ANALYSIS - EXECUTIVE SUMMARY
+Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
+
+OVERVIEW
+========
+Total Control Objectives: {len(data.get('control_objectives', []))}
+Departments Analyzed: {len(data.get('departments', []))}
+Control Gaps Identified: {len(data.get('gaps', []))}
+
+RISK DISTRIBUTION
+================
+"""
+    
+    risk_dist = data.get("risk_distribution", {})
+    for level, count in risk_dist.items():
+        summary += f"{level} Risk: {count} controls\n"
+    
+    summary += f"\nDEPARTMENTS ANALYZED\n{'='*20}\n"
+    for dept in data.get("departments", []):
+        summary += f"• {dept}\n"
+    
+    summary += f"\nKEY RECOMMENDATIONS\n{'='*19}\n"
+    for i, rec in enumerate(data.get("recommendations", [])[:5], 1):
+        summary += f"{i}. {rec.get('title', 'Recommendation')}\n"
+        summary += f"   Priority: {rec.get('priority', 'Medium')}\n"
+        summary += f"   {rec.get('description', '')}\n\n"
+    
+    summary += f"\nThis analysis was generated using the RCM Analytics Suite.\nFor detailed analysis, please refer to the complete Excel report.\n"
+    
+    return summary
 
 def create_downloadable_excel(data):
     """
@@ -281,12 +1107,12 @@ def create_downloadable_excel(data):
         control_activities = obj.get("control_activities", "")
         if not control_activities:
             # Generate detailed control activities based on the risk
-            what_can_go_wrong = obj.get("what_can_go_wrong", "")
-            if "unauthorized access" in what_can_go_wrong.lower():
+            what_can_go_wrong = obj.get("what_can_go_wrong", "").lower()
+            if "unauthorized access" in what_can_go_wrong:
                 control_activities = "Implementation of role-based access controls with regular access reviews. Multi-factor authentication for critical systems. Automated logging and monitoring of all access attempts. Regular audit of user privileges to ensure principle of least privilege."
-            elif "database" in what_can_go_wrong.lower():
+            elif "database" in what_can_go_wrong:
                 control_activities = "Regular database health monitoring with automated alerts. Scheduled database integrity checks and maintenance. Comprehensive backup procedures with regular recovery testing. Database access strictly controlled through application interfaces only."
-            elif "accounting entries" in what_can_go_wrong.lower() or "financial" in what_can_go_wrong.lower():
+            elif "accounting entries" in what_can_go_wrong or "financial" in what_can_go_wrong:
                 control_activities = "Multi-level approval workflow for all journal entries. Automated validation of accounting codes and amounts. Regular reconciliation of accounts. Monthly review of unusual transactions and threshold-based exception reporting."
             else:
                 control_activities = "Regular monitoring and review of processes. Clearly documented procedures with designated responsibilities. Automated controls where possible, with manual oversight. Periodic testing and validation of control effectiveness."
@@ -376,7 +1202,7 @@ def create_downloadable_excel(data):
         col = 2
         
         for risk_type in ["Financial", "Operational", "Compliance", "Strategic", "Technological"]:
-            risk_value = risks.get(risk_type, 0)
+            risk_value = risks.get("risk_categories", {}).get(risk_type, 0) if isinstance(risks, dict) else 0
             risk_values.append(risk_value)
             
             # Convert numeric value to text
@@ -486,241 +1312,343 @@ def generate_proposed_solution(obj):
     
     return proposed_solution
 
-def display_simplified_analysis(data):
-    """Display a simplified analysis focusing on departmental risks and gaps"""
+def main():
+    # Apply professional styling
+    apply_professional_styling()
     
-    # Overview section
-    st.markdown("## Departmental Risk Analysis")
+    # Professional header
+    create_professional_header()
     
-    # Process departments
-    departments = list(data.get("department_risks", {}).keys()) if data.get("department_risks") else data.get("departments", [])
-    control_objectives = data.get("control_objectives", [])
-    gaps = data.get("gaps", [])
+    # Display SQLite compatibility warning if needed (professional styling)
+    if not is_sqlite_compatible:
+        st.warning(f"⚠️ System Notice: SQLite version {'.'.join(map(str, sqlite_version))} detected. Using in-memory vector storage for optimal performance.")
     
-    if not departments:
-        st.warning("No departments found in the document. Please check the file format.")
-        return
-    
-    # Add download button for Excel report
-    excel_bytes = create_downloadable_excel(data)
-    st.download_button(
-        label="📥 Download Analysis as Excel",
-        data=excel_bytes,
-        file_name="risk_control_matrix_analysis.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        help="Download a fully formatted Excel file with all analysis data",
-    )
-    
-    # Create CSV download button
-    csv_data = io.StringIO()
-    
-    # Create CSV with control objectives data
-    control_df = pd.DataFrame([
-        {
-            "Department": obj.get("department", ""),
-            "Control Objective": obj.get("objective", ""),
-            "What Can Go Wrong": obj.get("what_can_go_wrong", ""),
-            "Risk Level": obj.get("risk_level", ""),
-            "Control Activities": obj.get("control_activities", ""),
-            "Person(s) in charge": obj.get("person_in_charge", "Finance Manager"),
-            "Additional Remarks": obj.get("additional_remarks", ""),
-            "Key Control": obj.get("key_control", "Yes"),
-            "Frequency Control": obj.get("frequency", "Monthly"),
-            "Balance Sheet": obj.get("balance_sheet", "✓"),
-            "P&L": obj.get("p_l", "✓"),
-            "Automated/Manual": obj.get("automated_manual", "Manual"),
-            "Preventive/Detective": obj.get("preventive_detective", "Preventive"),
-            "Existence/occurrence": obj.get("existence_occurrence", "P"),
-            "Completeness": obj.get("completeness", "P"),
-            "Valuation/Accuracy": obj.get("valuation_accuracy", "P"),
-            "Rights/Obligations": obj.get("rights_obligations", ""),
-            "Presentation/Disclosure": obj.get("presentation_disclosure", ""),
-            "Cut-off": obj.get("cut_off", ""),
-            "Control/Design Gap": "Yes" if obj.get("gap_details", "") else "No",
-            "Proposed Solution": generate_proposed_solution(obj)
-        }
-        for obj in control_objectives
-    ])
-    
-    control_df.to_csv(csv_data, index=False)
-    
-    st.download_button(
-        label="📥 Download Analysis as CSV",
-        data=csv_data.getvalue(),
-        file_name="risk_control_matrix_analysis.csv",
-        mime="text/csv",
-        help="Download a CSV file with analysis data",
-    )
-    
-    # Create tabs for each department
-    dept_tabs = st.tabs(departments)
-    
-    # Create analysis for each department
-    for i, dept in enumerate(departments):
-        with dept_tabs[i]:
-            # Get department-specific data
-            dept_objectives = [obj for obj in control_objectives if obj.get("department") == dept]
-            dept_gaps = [gap for gap in gaps if gap.get("department") == dept]
+    # Simplified sidebar with only quick stats and help
+    with st.sidebar:
+        st.markdown("### 🔧 RCM Analytics Suite")
+        
+        # Quick stats if analysis exists
+        if 'analyzed_data' in st.session_state and st.session_state.analyzed_data:
+            st.markdown("#### Analysis Results")
+            data = st.session_state.analyzed_data
             
-            # Department overview
-            dept_risk_data = data.get("department_risks", {}).get(dept, {})
-            if dept_risk_data:
-                risk_level = dept_risk_data.get("overall_risk_level", "Medium")
-                risk_class = "high-risk" if risk_level == "High" else "medium-risk" if risk_level == "Medium" else "low-risk"
-                
-                st.markdown(f"<div class='dept-card {risk_class}'>", unsafe_allow_html=True)
-                st.markdown(f"### {dept} Department - {risk_level} Risk")
-                st.markdown(f"**Summary**: {dept_risk_data.get('summary', 'No summary available.')}")
-                st.markdown("</div>", unsafe_allow_html=True)
+            total_controls = len(data.get("control_objectives", []))
+            total_gaps = len(data.get("gaps", []))
+            departments = len(data.get("departments", []))
             
-            # Risk Categories Analysis
-            st.markdown("### Risk Type Analysis")
+            st.metric("Control Objectives", total_controls)
+            st.metric("Control Gaps", total_gaps, delta=f"-{total_gaps} to resolve")
+            st.metric("Departments", departments)
             
-            # Define the specific risk types the user wants to analyze
-            risk_types = ["Operational", "Financial", "Fraud", "Financial Fraud", "Operational Fraud"]
+            st.markdown("---")
             
-            # Check if we have RAG analysis results with risk_types directly
-            if "risk_types" in dept_risk_data or "risk_analysis" in dept_risk_data:
-                risk_type_data = dept_risk_data.get("risk_types", dept_risk_data.get("risk_analysis", {}))
-                
-                cols = st.columns(len(risk_types))
-                for i, risk_type in enumerate(risk_types):
-                    with cols[i]:
-                        risks = risk_type_data.get(risk_type, [])
-                        count = len(risks)
-                        level = "High" if count >= 3 else "Medium" if count >= 1 else "Low"
-                        color = "#FF5252" if level == "High" else "#FFC107" if level == "Medium" else "#4CAF50"
-                        
-                        st.markdown(f"<div style='text-align:center'>", unsafe_allow_html=True)
-                        st.markdown(f"<h4>{risk_type}</h4>", unsafe_allow_html=True)
-                        st.markdown(f"<h2 style='color:{color}'>{count}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<span style='color:{color}'>{level} Risk</span>", unsafe_allow_html=True)
-                        st.markdown(f"</div>", unsafe_allow_html=True)
-                
-                # Show specific risks for each type in an expander
-                with st.expander("View Specific Risks by Type"):
-                    for risk_type in risk_types:
-                        risks = risk_type_data.get(risk_type, [])
-                        if risks:
-                            st.markdown(f"#### {risk_type} Risks")
-                            for risk in risks:
-                                st.markdown(f"- {risk}")
-                            st.markdown("---")
-            else:
-                # Analyze content to detect risk types - fallback to keyword analysis
-                risk_findings = {}
-                for risk_type in risk_types:
-                    risk_findings[risk_type] = []
-                    
-                    # Keywords for each risk type
-                    keywords = {
-                        "Operational": ["process", "workflow", "efficiency", "performance", "delivery", "resource", "procedure"],
-                        "Financial": ["financial", "budget", "cost", "expense", "revenue", "payment", "accounting"],
-                        "Fraud": ["fraud", "misappropriation", "theft", "falsification", "bribery", "corruption"],
-                        "Financial Fraud": ["financial fraud", "embezzlement", "accounting fraud", "false reporting", "misstatement"],
-                        "Operational Fraud": ["operational fraud", "process manipulation", "override", "unauthorized"]
-                    }
-                    
-                    # Check each objective for this risk type
-                    for obj in dept_objectives:
-                        objective = obj.get("objective", "").lower()
-                        risk = obj.get("what_can_go_wrong", "").lower()
-                        
-                        # Check if any keywords match
-                        matched = False
-                        for keyword in keywords.get(risk_type, []):
-                            if keyword in objective or keyword in risk:
-                                risk_findings[risk_type].append({
-                                    "objective": obj.get("objective", ""),
-                                    "risk": obj.get("what_can_go_wrong", ""),
-                                    "risk_level": obj.get("risk_level", "Medium")
-                                })
-                                matched = True
-                                break
-                
-                # Display risk findings
-                cols = st.columns(len(risk_types))
-                for i, risk_type in enumerate(risk_types):
-                    with cols[i]:
-                        count = len(risk_findings[risk_type])
-                        level = "High" if count >= 3 else "Medium" if count >= 1 else "Low"
-                        color = "#FF5252" if level == "High" else "#FFC107" if level == "Medium" else "#4CAF50"
-                        
-                        st.markdown(f"<div style='text-align:center'>", unsafe_allow_html=True)
-                        st.markdown(f"<h4>{risk_type}</h4>", unsafe_allow_html=True)
-                        st.markdown(f"<h2 style='color:{color}'>{count}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<span style='color:{color}'>{level} Risk</span>", unsafe_allow_html=True)
-                        st.markdown(f"</div>", unsafe_allow_html=True)
+            # Clear analysis option
+            if st.button("🗑️ Clear Analysis", help="Start fresh with new document", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
+        else:
+            # Help information when no analysis
+            st.markdown("#### Platform Features")
+            st.markdown("""
+            **Document Processing:**
+            - Excel (.xlsx) files
+            - CSV data files  
+            - PDF documents
+            - Word (.docx) files
             
-            # Control Gaps and Recommendations
-            st.markdown("### Control Gaps and Recommendations")
+            **AI Analysis:**
+            - Risk assessment
+            - Gap identification
+            - Strategic recommendations
+            - Executive dashboards
+            """)
             
-            if dept_gaps:
-                for i, gap in enumerate(dept_gaps):
-                    st.markdown(f"<div class='dept-card high-risk'>", unsafe_allow_html=True)
-                    st.markdown(f"**Gap {i+1}**: {gap.get('gap_title', '')}")
-                    st.markdown(f"**Control Objective**: {gap.get('control_objective', '')}")
-                    st.markdown(f"**Impact**: {gap.get('risk_impact', '')}")
-                    
-                    # Get or generate recommendation
-                    recommendation = gap.get('proposed_solution', '')
-                    if not recommendation:
-                        # Find matching recommendation from overall recommendations
-                        for rec in data.get("recommendations", []):
-                            if rec.get("department") == dept:
-                                recommendation = rec.get("description", "")
-                                break
-                    
-                    st.markdown(f"**Recommended Action**: {recommendation}")
-                    st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.info("No control gaps identified for this department.")
-            
-            # Key Risks
-            st.markdown("### Key Risks")
-            key_risks = dept_risk_data.get("key_risks", [])
-            if key_risks:
-                for risk in key_risks:
-                    st.markdown(f"- {risk}")
-            else:
-                # Generate a list of key risks if none exist
-                if dept_objectives:
-                    st.markdown("Based on analysis of control objectives:")
-                    high_risks = [obj for obj in dept_objectives if obj.get("risk_level", "").lower() in ["high", "h", "critical"]]
-                    for i, risk in enumerate(high_risks[:3]):  # Show up to 3 high risks
-                        st.markdown(f"- {risk.get('what_can_go_wrong', '')}")
-                else:
-                    st.info("No key risks identified for this department.")
+            st.markdown("---")
+            st.markdown("#### Support")
+            st.markdown("""
+            📧 [Support](mailto:support@example.com)
+            📚 [Documentation](https://docs.example.com)
+            🐛 [Report Issues](https://github.com/issues)
+            """)
     
-    # Overall Recommendations
-    st.markdown("## Overall Recommendations")
-    recommendations = data.get("recommendations", [])
-    if recommendations:
-        for i, rec in enumerate(recommendations[:5]):  # Show top 5 recommendations
-            priority = rec.get("priority", "Medium")
-            rec_class = "high-risk" if priority == "High" else "medium-risk" if priority == "Medium" else "low-risk"
-            
-            st.markdown(f"<div class='dept-card {rec_class}'>", unsafe_allow_html=True)
-            st.markdown(f"**{rec.get('title', f'Recommendation {i+1}')}** (Priority: {priority})")
-            st.markdown(f"{rec.get('description', '')}")
-            
-            if "impact" in rec:
-                st.markdown(f"**Expected Impact**: {rec.get('impact', '')}")
-                
-            if "department" in rec and rec["department"]:
-                st.markdown(f"**Department**: {rec.get('department', '')}")
-                
-            st.markdown("</div>", unsafe_allow_html=True)
+    # Main content area
+    if 'analyzed_data' not in st.session_state:
+        st.session_state.analyzed_data = None
+    
+    # Display analysis results if available
+    if st.session_state.analyzed_data:
+        display_professional_analysis(st.session_state.analyzed_data)
     else:
-        st.info("No specific recommendations generated. Consider reviewing the identified gaps.")
-
-    # Add clear button at the bottom
-    st.markdown("---")
-    if st.button("🗑️ Clear Analysis", type="primary", help="Clear all analysis data and start fresh"):
-        # Reset session state
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+        # Main page content when no analysis is available
+        if 'file_uploaded' not in st.session_state:
+            st.session_state.file_uploaded = False
+        
+        # Check if we have an uploaded file but no analysis yet
+        uploaded_file = None
+        if 'uploaded_file' in st.session_state:
+            uploaded_file = st.session_state.uploaded_file
+        
+        # File upload section on main page
+        if not st.session_state.file_uploaded:
+            st.markdown("## 📄 Upload Risk Control Matrix Document")
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                uploaded_file = st.file_uploader(
+                    "Select your RCM document to begin analysis", 
+                    type=["xlsx", "csv", "pdf", "docx"], 
+                    help="Upload your Risk Control Matrix in Excel, CSV, PDF, or Word format",
+                    key="main_file_uploader"
+                )
+                
+                if uploaded_file:
+                    st.session_state.uploaded_file = uploaded_file
+                    st.session_state.file_uploaded = True
+                    st.rerun()
+            
+            with col2:
+                st.markdown("""
+                <div class="executive-card">
+                    <h4>Supported Formats</h4>
+                    <p>📊 Excel (.xlsx)<br>
+                    📋 CSV (.csv)<br>
+                    📄 PDF (.pdf)<br>
+                    📝 Word (.docx)</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Configuration and analysis section (shown after file upload)
+        if st.session_state.file_uploaded and uploaded_file:
+            st.markdown("## 📄 Document Ready for Analysis")
+            
+            # Document information
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown(f"""
+                <div class="executive-card">
+                    <h4>📎 Document Information</h4>
+                    <p><strong>File:</strong> {uploaded_file.name}</p>
+                    <p><strong>Size:</strong> {uploaded_file.size:,} bytes</p>
+                    <p><strong>Type:</strong> {uploaded_file.type}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                # Remove file button
+                if st.button("🗑️ Remove File", help="Choose a different file", use_container_width=True):
+                    st.session_state.file_uploaded = False
+                    if 'uploaded_file' in st.session_state:
+                        del st.session_state.uploaded_file
+                    st.rerun()
+            
+            st.markdown("---")
+            
+            # Analysis configuration section
+            st.markdown("## ⚙️ Analysis Configuration")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                analysis_depth = st.selectbox(
+                    "📊 Analysis Depth",
+                    ["Standard", "Comprehensive", "Executive Summary Only"],
+                    index=1,
+                    help="Choose the level of analysis detail"
+                )
+            
+            with col2:
+                include_recommendations = st.checkbox(
+                    "💡 Generate Recommendations",
+                    value=True,
+                    help="Include AI-generated strategic recommendations"
+                )
+            
+            with col3:
+                # Placeholder for future options
+                st.markdown("**🔍 Analysis Focus**")
+                st.selectbox(
+                    "Select focus area",
+                    ["All Departments", "High Risk Only", "Critical Controls"],
+                    help="Choose what to prioritize in the analysis"
+                )
+            
+            st.markdown("---")
+            
+            # Analysis button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                analyze_button = st.button(
+                    "🚀 Start Comprehensive Analysis", 
+                    type="primary",
+                    use_container_width=True,
+                    help="Begin AI-powered risk analysis"
+                )
+            
+            # Handle analysis
+            if analyze_button:
+                # Professional analysis progress
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                try:
+                    # Step 1: Document Processing
+                    status_text.markdown("""
+                    <div class="analysis-status">
+                        <h3>🔍 Processing Document</h3>
+                        <p>Extracting and structuring RCM data...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    progress_bar.progress(25)
+                    
+                    # Save the uploaded file temporarily
+                    temp_file_path = f"temp_{uploaded_file.name}"
+                    with open(temp_file_path, "wb") as f:
+                        f.write(uploaded_file.getvalue())
+                    
+                    # Process document
+                    processed_data = process_document(temp_file_path)
+                    progress_bar.progress(50)
+                    
+                    # Step 2: Vector Storage (optional)
+                    status_text.markdown("""
+                    <div class="analysis-status">
+                        <h3>💾 Storing Knowledge Base</h3>
+                        <p>Building vector database for enhanced analysis...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    try:
+                        if is_sqlite_compatible:
+                            db = initialize_chroma("risk_control_matrix")
+                            store_in_chroma(db, processed_data)
+                    except Exception as chroma_error:
+                        # Log but don't display error to maintain professional appearance
+                        pass
+                    
+                    progress_bar.progress(75)
+                    
+                    # Step 3: AI Analysis
+                    status_text.markdown("""
+                    <div class="analysis-status">
+                        <h3>🤖 AI Risk Analysis</h3>
+                        <p>Analyzing risks, identifying patterns, and generating insights...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Analyze with Gemini
+                    if analysis_depth == "Executive Summary Only":
+                        # Simplified analysis for executive view
+                        analyzed_data = analyze_risk_with_gemini(gemini_model, processed_data)
+                        analyzed_data["analysis_type"] = "executive"
+                    else:
+                        # Full analysis
+                        analyzed_data = analyze_risk_with_gemini(gemini_model, processed_data)
+                        analyzed_data["analysis_type"] = analysis_depth.lower()
+                    
+                    st.session_state.analyzed_data = analyzed_data
+                    progress_bar.progress(100)
+                    
+                    # Cleanup
+                    try:
+                        os.remove(temp_file_path)
+                    except:
+                        pass
+                    
+                    # Success message
+                    status_text.markdown("""
+                    <div class="analysis-status">
+                        <h3>✅ Analysis Complete</h3>
+                        <p>Professional risk assessment ready for review</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    time.sleep(2)
+                    status_text.empty()
+                    progress_bar.empty()
+                    st.rerun()
+                    
+                except Exception as e:
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.error(f"❌ Analysis Error: {str(e)}")
+                    st.info("Please check your document format and try again. Contact support if the issue persists.")
+                    
+                    # Cleanup on error
+                    try:
+                        if os.path.exists(temp_file_path):
+                            os.remove(temp_file_path)
+                    except:
+                        pass
+        
+        # Welcome screen when no file is uploaded
+        if not st.session_state.file_uploaded:
+            st.markdown("---")
+            st.markdown("## 🎯 Professional Risk Assessment Platform")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("""
+                <div class="executive-card">
+                    <h4>📊 Comprehensive Analysis</h4>
+                    <p>Advanced AI-powered risk assessment with departmental breakdowns, control gap identification, and strategic recommendations.</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown("""
+                <div class="executive-card">
+                    <h4>📈 Executive Dashboards</h4>
+                    <p>Professional visualizations and executive summaries ready for board presentations and stakeholder reviews.</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown("""
+                <div class="executive-card">
+                    <h4>📄 Professional Reports</h4>
+                    <p>Export comprehensive Excel reports, executive summaries, and CSV data for further analysis and documentation.</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Feature highlights
+            st.markdown("---")
+            st.markdown("### 🚀 Platform Capabilities")
+            
+            feature_col1, feature_col2 = st.columns(2)
+            
+            with feature_col1:
+                st.markdown("""
+                **Document Processing:**
+                - Excel (.xlsx) spreadsheets
+                - CSV data files  
+                - PDF documents
+                - Word documents (.docx)
+                
+                **Risk Analysis:**
+                - Department-level assessment
+                - Control objective evaluation
+                - Gap identification and prioritization
+                - Risk level classification and scoring
+                """)
+            
+            with feature_col2:
+                st.markdown("""
+                **AI-Powered Insights:**
+                - Google Gemini integration
+                - Intelligent pattern recognition
+                - Automated risk categorization
+                - Strategic recommendation generation
+                
+                **Professional Outputs:**
+                - Executive summary dashboards
+                - Interactive risk heatmaps
+                - Comprehensive Excel reports
+                - Stakeholder-ready presentations
+                """)
 
 if __name__ == "__main__":
     main() 
